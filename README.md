@@ -81,7 +81,7 @@ This is currently only for interop purpose and not production use yet.
 	}
 
 	request.Header.Set("Authorization", authHeaderValue)
-    response, err := roundTripper.RoundTrip(request)
+	response, err := roundTripper.RoundTrip(request)
 	log.Debug().Msgf("negotiated protocol is %s", connState.NegotiatedProtocol)
 	if err != nil {
 		log.Fatal().Msgf("could not perform request: %s", err)
