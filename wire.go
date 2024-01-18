@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+
+	"github.com/rs/zerolog/log"
 )
 
 // ParseKeyID parses the given base64-encoded string into a KeyID
@@ -121,7 +123,8 @@ func ParseUncompressedPoint(uncompressedPoint []byte, scheme tls.SignatureScheme
 	default:
 		return nil, TLSSignatureSchemeNotSupported{Scheme: scheme, Reason: "Unsupported signature scheme"}
 	}
-	if len(uncompressedPoint) != 1+2*coordinatesLength || uncompressedPoint[0] == 4 {
+	if len(uncompressedPoint) != 1+2*coordinatesLength || uncompressedPoint[0] != 4 {
+		log.Debug().Msgf("len(uncompressedPoint)=%d, coordinatesLength=%d, uncompressedPoint[0]=%d", len(uncompressedPoint), coordinatesLength, uncompressedPoint[0])
 		return nil, InvalidPublicKeyFormat{scheme}
 	}
 	x := new(big.Int).SetBytes(uncompressedPoint[1 : 1+coordinatesLength])

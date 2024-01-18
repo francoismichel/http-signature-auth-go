@@ -20,8 +20,8 @@ func TestVerifySignatureWithExistingMaterial(t *testing.T) {
 	rsaKeyID := "testKeyIDrsa"
 	keys := NewKeysDatabase()
 	keys.AddKey(KeyID(rsaKeyID), &rsaKey.PublicKey)
-	
-	ecdsaKey, err:= ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+
+	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	Expect(err).ToNot(HaveOccurred())
 	ecdsaKeyID := "testKeyIDEcdsa"
 	keys.AddKey(KeyID(ecdsaKeyID), &ecdsaKey.PublicKey)
@@ -35,34 +35,35 @@ func TestVerifySignatureWithExistingMaterial(t *testing.T) {
 	copy(material.signatureInput[:], []byte("testSignatureInput"))
 	copy(material.verification[:], []byte("testVerification"))
 
-
 	// rsa
-	signature, err := NewSignatureWithMaterial(material, KeyID(rsaKeyID), rsaKey, &rsaKey.PublicKey, tls.PSSWithSHA256)
+	signature, err := NewSignatureWithMaterial(material, KeyID(rsaKeyID), rsaKey, tls.PSSWithSHA256)
 	Expect(err).ToNot(HaveOccurred())
-	ok, err := ValidateSignatureWithMaterial(keys, signature, material)
+	ok, err := VerifySignatureWithMaterial(keys, signature, material)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(ok).To(BeTrue())
 
 	// ecdsa
-	signature, err = NewSignatureWithMaterial(material, KeyID(ecdsaKeyID), ecdsaKey, &ecdsaKey.PublicKey, tls.ECDSAWithP256AndSHA256)
+	signature, err = NewSignatureWithMaterial(material, KeyID(ecdsaKeyID), ecdsaKey, tls.ECDSAWithP256AndSHA256)
 	Expect(err).ToNot(HaveOccurred())
-	ok, err = ValidateSignatureWithMaterial(keys, signature, material)
+	ok, err = VerifySignatureWithMaterial(keys, signature, material)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(ok).To(BeTrue())
 
 	// ed25519
-	signature, err = NewSignatureWithMaterial(material, KeyID(ed25519KeyID), ed25519PrivKey, ed25519PubKey, tls.Ed25519)
+	signature, err = NewSignatureWithMaterial(material, KeyID(ed25519KeyID), ed25519PrivKey, tls.Ed25519)
 	Expect(err).ToNot(HaveOccurred())
-	ok, err = ValidateSignatureWithMaterial(keys, signature, material)
+	ok, err = VerifySignatureWithMaterial(keys, signature, material)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(ok).To(BeTrue())
 }
 
 func TestParseSignatureAuthorizationPayload(t *testing.T) {
 	RegisterTestingT(t)
-	stringVal :="Signature k=YmFzZW1lbnQ, a=VGhpcyBpcyBhIHB1YmxpYyBrZXkgaW4gdXNlIGhlcmU, "+
-	"s=2055, v=dmVyaWZpY2F0aW9uXzE2Qg, p=SW5zZXJ0IHNpZ25hdHVyZSBvZiBub25jZSBoZXJlIHdo"+
-	"aWNoIHRha2VzIDUxMiBiaXRzIGZvciBFZDI1NTE5IQ"
+
+	// these values come from the example in https://www.ietf.org/archive/id/draft-ietf-httpbis-unprompted-auth-05.html
+	stringVal := "Signature k=YmFzZW1lbnQ, a=VGhpcyBpcyBhIHB1YmxpYyBrZXkgaW4gdXNlIGhlcmU, " +
+		"s=2055, v=dmVyaWZpY2F0aW9uXzE2Qg, p=SW5zZXJ0IHNpZ25hdHVyZSBvZiBub25jZSBoZXJlIHdo" +
+		"aWNoIHRha2VzIDUxMiBiaXRzIGZvciBFZDI1NTE5IQ"
 
 	decodedKeyId := "basement"
 	decodedPubKey := "This is a public key in use here"
@@ -70,7 +71,7 @@ func TestParseSignatureAuthorizationPayload(t *testing.T) {
 	decodedVerification := "verification_16B"
 	decodedSignature := "Insert signature of nonce here which takes 512 bits for Ed25519!"
 
-	signature, err := ParseSignatureAuthorizationPayload(stringVal)
+	signature, err := ParseSignatureAuthorizationContent(stringVal)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(signature.keyID).To(Equal(KeyID(decodedKeyId)))
 	Expect(signature.pubkey).To(BeEquivalentTo(decodedPubKey))

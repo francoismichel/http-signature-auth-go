@@ -5,9 +5,17 @@ import (
 	"net/http"
 )
 
-
-
-func SignatureAuthHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement the HTTP signature authentication scheme here.
-	w.Write([]byte("Hello, world!"))
+func NewSignatureAuthHandler(keysDB *Keys, handlerFunc http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, err := VerifySignature(keysDB, r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		handlerFunc(w, r)
+	}
 }

@@ -10,13 +10,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/rs/zerolog/log"
 )
 
 var SIGNATURE_HEADER_PART_1 [64]byte = [64]byte{
@@ -117,9 +116,16 @@ type TLSExporterMaterial struct {
 	verification   [16]byte
 }
 
+func (m *TLSExporterMaterial) String() string {
+	return fmt.Sprintf("signatureInput=%s, verification=%s", b64Encoder.EncodeToString(m.signatureInput[:]), b64Encoder.EncodeToString(m.verification[:]))
+}
+
+
 func GenerateTLSExporterMaterial(tls *tls.ConnectionState, signatureScheme tls.SignatureScheme, keyID KeyID, pubKey crypto.PublicKey, httpScheme string, httpHost string, httpPort uint16, httpRealm string) (TLSExporterMaterial, error) {
 	var material TLSExporterMaterial
 	var err error
+	
+	log.Debug().Msgf("generate TLS exporter material: signatureScheme=%s, keyID=%s, httpScheme=%s, httpHost=%s, httpPort=%d, httpRealm=%s", signatureScheme, b64Encoder.EncodeToString([]byte(keyID)), httpScheme, httpHost, httpPort, httpRealm)
 	exporterInput, err := PrepareTLSExporterInput(signatureScheme, keyID, pubKey, httpScheme, httpHost, httpPort, httpRealm)
 	if err != nil {
 		return material, err
@@ -143,13 +149,13 @@ type Signature struct {
 	signatureScheme      tls.SignatureScheme
 }
 
-// SerializeSignatureAuthorizationValue serializes the signature into a string
+// SignatureAuthorizationHeader serializes the signature into a string
 // that can be used in the Authorization header.
 // The returned value takes the form
 // k, a, v and p are base64url-encoded
 // s is base10-encoded
 // "Signature k=<keyID>,a=<pubkey>,s=<signatureScheme>,v=<exporterVerification>,p=<proof>"
-func (s *Signature) SerializeSignatureAuthorizationValue() (string, error) {
+func (s *Signature) SignatureAuthorizationHeader() (string, error) {
 	pubkeyBytes, err := SerializePublicKey(nil, s.pubkey)
 	if err != nil {
 		return "", err
@@ -164,15 +170,27 @@ func (s *Signature) SerializeSignatureAuthorizationValue() (string, error) {
 	return out, nil
 }
 
-func NewSignatureFromRequest(tls *tls.ConnectionState, r *http.Request, keyID KeyID, privKey crypto.PrivateKey, pubkey crypto.PublicKey, signatureScheme tls.SignatureScheme) (*Signature, error) {
+func NewSignatureForRequest(tls *tls.ConnectionState, r *http.Request, keyID KeyID, signer crypto.Signer, signatureScheme tls.SignatureScheme) (*Signature, error) {
+	// from the doc: 
+	// For server requests, the URL is parsed from the URI
+	// supplied on the Request-Line as stored in RequestURI.  For
+	// most requests, fields other than Path and RawQuery will be
+	// empty. (See RFC 7230, Section 5.3)
+	// so the scheme will probably be empty, but we let the upstream
+	// code set a specific scheme if needed
+	httpScheme := r.URL.Scheme
+	if httpScheme == "" {
+		// assume https by default
+		httpScheme = "https"
+	}
 	portStr := r.URL.Port()
 	if portStr == "" {
-		if r.URL.Scheme == "http" {
+		if httpScheme == "http" {
 			portStr = "80"
-		} else if r.URL.Scheme == "https" {
+		} else if httpScheme == "https" {
 			portStr = "443"
 		} else {
-			return nil, errors.New("Unknown scheme: " + r.URL.Scheme)
+			return nil, errors.New("Unknown scheme: " + httpScheme)
 		}
 	}
 	port, err := strconv.ParseUint(portStr, 10, 16)
@@ -180,26 +198,29 @@ func NewSignatureFromRequest(tls *tls.ConnectionState, r *http.Request, keyID Ke
 		return nil, err
 	}
 	// TODO: Implement realm
-	material, err := GenerateTLSExporterMaterial(tls, signatureScheme, keyID, pubkey, r.URL.Scheme, r.URL.Hostname(), uint16(port), "")
+	material, err := GenerateTLSExporterMaterial(tls, signatureScheme, keyID, signer.Public(), httpScheme, r.Host, uint16(port), "")
 	if err != nil {
 		return nil, err
 	}
-	return NewSignatureWithMaterial(&material, keyID, privKey, pubkey, signatureScheme)
+	return NewSignatureWithMaterial(&material, keyID, signer, signatureScheme)
 }
 
-func NewSignatureWithMaterial(material *TLSExporterMaterial, keyID KeyID, privKey crypto.PrivateKey, pubkey crypto.PublicKey, signatureScheme tls.SignatureScheme) (*Signature, error) {
+func NewSignatureWithMaterial(material *TLSExporterMaterial, keyID KeyID, signer crypto.Signer, signatureScheme tls.SignatureScheme) (*Signature, error) {
+	log.Debug().Msgf("generate new signature, keyID=%s, signatureScheme=%s, material=<%s>", b64Encoder.EncodeToString([]byte(keyID)), signatureScheme, material)
+	pubkey := signer.Public()
 	if !IsPubkeySupported(pubkey) {
 		return nil, UnsupportedKeyType{Type: fmt.Sprintf("%T", pubkey)}
 	}
-	
+
+	log.Debug().Msgf("pubkey type %T is supported", pubkey)
+
 	signaturePayload := append(SIGNATURE_HEADER, material.signatureInput[:]...)
 
 	var proof []byte
 	var digest []byte
-	var signer crypto.Signer
 	var opts crypto.SignerOpts
-	
-	switch k := privKey.(type) {
+
+	switch k := signer.(type) {
 	case *rsa.PrivateKey:
 		cryptoHash, err := GetHash(signatureScheme)
 		if err != nil {
@@ -222,7 +243,7 @@ func NewSignatureWithMaterial(material *TLSExporterMaterial, keyID KeyID, privKe
 		hash := cryptoHash.New()
 		hash.Write(signaturePayload)
 		digest = hash.Sum(nil)
-	case ed25519.PrivateKey:
+	case ed25519.PrivateKey, *ed25519.PrivateKey:
 		signer = k
 		opts = crypto.Hash(0)
 		digest = signaturePayload
@@ -244,11 +265,15 @@ func NewSignatureWithMaterial(material *TLSExporterMaterial, keyID KeyID, privKe
 	}, nil
 }
 
-func ParseSignatureAuthorizationPayload(payload string) (*Signature, error) {
+// ParseSignatureAuthorizationContent parses the given Authorization header content
+// into a Signature. content must be a value Signature Authorization header content,
+// i.e. it must start with "Signature " and follow the specification in
+// https://www.ietf.org/archive/id/draft-ietf-httpbis-unprompted-auth-05.html
+func ParseSignatureAuthorizationContent(content string) (*Signature, error) {
 	const prefix = "Signature "
-	if strings.HasPrefix(payload, prefix) {
+	if strings.HasPrefix(content, prefix) {
 		// Extract the parameters from the Authorization header
-		parameters := payload[len(prefix):]
+		parameters := content[len(prefix):]
 
 		parametersPresent := make(map[string]bool)
 		fields := strings.Split(parameters, ",")
@@ -259,7 +284,7 @@ func ParseSignatureAuthorizationPayload(payload string) (*Signature, error) {
 		var err error
 		for _, fieldWithSpaces := range fields {
 			field := strings.TrimSpace(fieldWithSpaces)
-			
+
 			keyValue := strings.Split(field, "=")
 			if len(keyValue) != 2 {
 				return nil, MalformedHTTPSignatureAuth{Msg: "parameters should be in k=v format, received: " + field}
@@ -324,10 +349,10 @@ func ParseSignatureAuthorizationPayload(payload string) (*Signature, error) {
 //	    aWNoIHRha2VzIDUxMiBiaXRzIGZvciBFZDI1NTE5IQ
 func ExtractSignature(r *http.Request) (*Signature, error) {
 	authHeader := r.Header.Get("Authorization")
-	return ParseSignatureAuthorizationPayload(authHeader)
+	return ParseSignatureAuthorizationContent(authHeader)
 }
 
-func ValidateSignature(keysDB *Keys, r *http.Request) (bool, error) {
+func VerifySignature(keysDB *Keys, r *http.Request) (bool, error) {
 	signatureCandidate, err := ExtractSignature(r)
 	if err != nil {
 		return false, err
@@ -337,16 +362,22 @@ func ValidateSignature(keysDB *Keys, r *http.Request) (bool, error) {
 		return false, nil
 	}
 
+	httpScheme := r.URL.Scheme
+	if httpScheme == "" {
+		// assume https by default
+		httpScheme = "https"
+	}
+
 	portStr := r.URL.Port()
 	// if the port is empty in the URL, do we get the actual port from the server or do we set
 	// 80 for http and 443 for https ?
 	if portStr == "" {
-		if r.URL.Scheme == "http" {
+		if httpScheme == "http" {
 			portStr = "80"
-		} else if r.URL.Scheme == "https" {
+		} else if httpScheme == "https" {
 			portStr = "443"
 		} else {
-			return false, MalformedHTTPSignatureAuth{Msg: "Unknown scheme: " + r.URL.Scheme}
+			return false, MalformedHTTPSignatureAuth{Msg: "Unknown scheme: " + httpScheme}
 		}
 	}
 
@@ -357,18 +388,20 @@ func ValidateSignature(keysDB *Keys, r *http.Request) (bool, error) {
 	}
 
 	material, err := GenerateTLSExporterMaterial(r.TLS, signatureCandidate.signatureScheme,
-		signatureCandidate.keyID, signatureCandidate.pubkey, r.URL.Scheme, r.URL.Hostname(),
+		signatureCandidate.keyID, signatureCandidate.pubkey, httpScheme, r.Host,
 		uint16(port), "") // TODO: Implement realm
 	if err != nil {
 		return false, err
 	}
-	return ValidateSignatureWithMaterial(keysDB, signatureCandidate, &material)
+	return VerifySignatureWithMaterial(keysDB, signatureCandidate, &material)
 }
 
-func ValidateSignatureWithMaterial(keysDB *Keys, signatureCandidate *Signature, material *TLSExporterMaterial) (bool, error) {
+func VerifySignatureWithMaterial(keysDB *Keys, signatureCandidate *Signature, material *TLSExporterMaterial) (bool, error) {
+	log.Debug().Msgf("Verifying signature with key ID %s, proof=%s, exporter_material=<%s>", b64Encoder.EncodeToString([]byte(signatureCandidate.keyID)),
+					 b64Encoder.EncodeToString(signatureCandidate.proof), material)
 	key := keysDB.GetKey(signatureCandidate.keyID)
 	if key == nil {
-		log.Println("key not present in the database")
+		log.Debug().Msgf("key %s not present in the database", signatureCandidate.keyID)
 		return false, nil
 	}
 	if !IsPubkeySupported(key) {
@@ -393,9 +426,10 @@ func ValidateSignatureWithMaterial(keysDB *Keys, signatureCandidate *Signature, 
 		hash := cryptoHash.New()
 		hash.Write(signaturePayload)
 		digest := hash.Sum(nil)
+		log.Debug().Msgf("Verifying RSA-PSS signature with hash %s, digest=%s", cryptoHash, b64Encoder.EncodeToString(digest))
 		pssErr := rsa.VerifyPSS(k, cryptoHash, digest, signatureCandidate.proof, nil)
 		if pssErr != nil {
-			fmt.Fprintln(os.Stderr, "Error verifying RSA-PSS signature:", pssErr)
+			log.Debug().Msgf("Error verifying RSA-PSS signature: %s", pssErr)
 		}
 		return pssErr == nil, nil
 	case *ecdsa.PublicKey:
