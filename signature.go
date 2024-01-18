@@ -35,6 +35,31 @@ type PubkeyEqual interface {
 	Equal(crypto.PublicKey) bool
 }
 
+func GetPortFromRequest(r *http.Request, httpScheme string) (uint16, error) {
+	portStr := ""
+	switch httpScheme {
+	case "http":
+		portStr = "80"
+	case "https":
+		portStr = "443"
+	default:
+		return 0, errors.New("Unknown scheme: " + httpScheme)
+	}
+
+	// retrieve the port from the request (for HTTP/2, the Host field may also come from the :authority pseudo-header)
+	hostPort := strings.Split(r.Host, ":")
+	if len(hostPort) == 2 && hostPort[1] != "" {
+		portStr = hostPort[1]
+	} else if len(hostPort) > 2 {
+		return 0, errors.New("Invalid Host header format: " + r.Host)
+	}
+	port, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil {
+		return 0, err
+	}
+	return uint16(port), nil
+}
+
 func GetHash(scheme tls.SignatureScheme) (crypto.Hash, error) {
 	var hash crypto.Hash
 	switch scheme {
@@ -182,17 +207,8 @@ func NewSignatureForRequest(tls *tls.ConnectionState, r *http.Request, keyID Key
 		// assume https by default
 		httpScheme = "https"
 	}
-	portStr := r.URL.Port()
-	if portStr == "" {
-		if httpScheme == "http" {
-			portStr = "80"
-		} else if httpScheme == "https" {
-			portStr = "443"
-		} else {
-			return nil, errors.New("Unknown scheme: " + httpScheme)
-		}
-	}
-	port, err := strconv.ParseUint(portStr, 10, 16)
+
+	port, err := GetPortFromRequest(r, httpScheme)
 	if err != nil {
 		return nil, err
 	}
@@ -367,23 +383,9 @@ func VerifySignature(keysDB *Keys, r *http.Request) (bool, error) {
 		httpScheme = "https"
 	}
 
-	portStr := r.URL.Port()
-	// if the port is empty in the URL, do we get the actual port from the server or do we set
-	// 80 for http and 443 for https ?
-	if portStr == "" {
-		if httpScheme == "http" {
-			portStr = "80"
-		} else if httpScheme == "https" {
-			portStr = "443"
-		} else {
-			return false, MalformedHTTPSignatureAuth{Msg: "Unknown scheme: " + httpScheme}
-		}
-	}
-
-	var port uint64
-	port, err = strconv.ParseUint(portStr, 10, 16)
+	port, err := GetPortFromRequest(r, httpScheme)
 	if err != nil {
-		return false, MalformedHTTPSignatureAuth{Msg: "Invalid port: " + portStr}
+		return false, fmt.Errorf(fmt.Sprintf("incalid port: %s", err))
 	}
 
 	material, err := GenerateTLSExporterMaterial(r.TLS, signatureCandidate.signatureScheme,
