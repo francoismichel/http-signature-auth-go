@@ -13,9 +13,11 @@ import (
 var b64Encoder = base64.RawStdEncoding
 
 type KeyID string
+
 func (k KeyID) String() string {
 	return fmt.Sprintf("<%s>", b64Encoder.EncodeToString([]byte(k)))
 }
+
 type KeyType int
 
 const (

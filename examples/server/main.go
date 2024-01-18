@@ -19,7 +19,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-
 func ParseAuthorizedKeysFile(file *os.File) (keyIDs []http_signature_auth.KeyID, keys []crypto.PublicKey, err error) {
 	scanner := bufio.NewScanner(file)
 	lineNumber := 0
@@ -107,7 +106,6 @@ func main() {
 		tlsConfig.Certificates = append(tlsConfig.Certificates, certificate)
 	}
 
-
 	tlsConfig.NextProtos = []string{"http/1.1", "h2", "h3"}
 
 	mux := http.NewServeMux()
@@ -117,8 +115,8 @@ func main() {
 	mux.Handle("/signature/draft-ietf-httpbis-unprompted-auth-05", handler)
 	server := http.Server{
 		TLSConfig: tlsConfig,
-		Addr: 	*bindAddr,
-		Handler: mux,
+		Addr:      *bindAddr,
+		Handler:   mux,
 	}
 	log.Info().Msgf("Start HTTPS over TLS on %s", *bindAddr)
 	go func() {
@@ -130,8 +128,8 @@ func main() {
 	log.Info().Msgf("Start HTTPS over QUIC on %s", *bindAddr)
 	quicServer := http3.Server{
 		TLSConfig: tlsConfig,
-		Addr: *bindAddr,
-		Handler: mux,
+		Addr:      *bindAddr,
+		Handler:   mux,
 	}
 	err = quicServer.ListenAndServe()
 	if err != nil {

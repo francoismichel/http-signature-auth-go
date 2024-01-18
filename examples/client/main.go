@@ -63,7 +63,6 @@ func main() {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-	
 
 	if len(flag.Args()) == 0 {
 		flag.Usage()
@@ -184,7 +183,7 @@ func main() {
 		}
 
 		connState = qConn.ConnectionState().TLS
-		
+
 		roundTripper = &http3.RoundTripper{
 			Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, quicConf *quic.Config) (quic.EarlyConnection, error) {
 				return qConn.(quic.EarlyConnection), nil
@@ -211,7 +210,7 @@ func main() {
 			log.Debug().Msgf("    %s: %s", key, val)
 		}
 	}
-	
+
 	response, err = roundTripper.RoundTrip(request)
 	log.Debug().Msgf("negotiated protocol is %s", connState.NegotiatedProtocol)
 	if err != nil {

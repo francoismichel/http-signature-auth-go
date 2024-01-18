@@ -120,11 +120,10 @@ func (m *TLSExporterMaterial) String() string {
 	return fmt.Sprintf("signatureInput=%s, verification=%s", b64Encoder.EncodeToString(m.signatureInput[:]), b64Encoder.EncodeToString(m.verification[:]))
 }
 
-
 func GenerateTLSExporterMaterial(tls *tls.ConnectionState, signatureScheme tls.SignatureScheme, keyID KeyID, pubKey crypto.PublicKey, httpScheme string, httpHost string, httpPort uint16, httpRealm string) (TLSExporterMaterial, error) {
 	var material TLSExporterMaterial
 	var err error
-	
+
 	log.Debug().Msgf("generate TLS exporter material: signatureScheme=%s, keyID=%s, httpScheme=%s, httpHost=%s, httpPort=%d, httpRealm=%s", signatureScheme, b64Encoder.EncodeToString([]byte(keyID)), httpScheme, httpHost, httpPort, httpRealm)
 	exporterInput, err := PrepareTLSExporterInput(signatureScheme, keyID, pubKey, httpScheme, httpHost, httpPort, httpRealm)
 	if err != nil {
@@ -171,7 +170,7 @@ func (s *Signature) SignatureAuthorizationHeader() (string, error) {
 }
 
 func NewSignatureForRequest(tls *tls.ConnectionState, r *http.Request, keyID KeyID, signer crypto.Signer, signatureScheme tls.SignatureScheme) (*Signature, error) {
-	// from the doc: 
+	// from the doc:
 	// For server requests, the URL is parsed from the URI
 	// supplied on the Request-Line as stored in RequestURI.  For
 	// most requests, fields other than Path and RawQuery will be
@@ -398,7 +397,7 @@ func VerifySignature(keysDB *Keys, r *http.Request) (bool, error) {
 
 func VerifySignatureWithMaterial(keysDB *Keys, signatureCandidate *Signature, material *TLSExporterMaterial) (bool, error) {
 	log.Debug().Msgf("Verifying signature with key ID %s, proof=%s, exporter_material=<%s>", b64Encoder.EncodeToString([]byte(signatureCandidate.keyID)),
-					 b64Encoder.EncodeToString(signatureCandidate.proof), material)
+		b64Encoder.EncodeToString(signatureCandidate.proof), material)
 	key := keysDB.GetKey(signatureCandidate.keyID)
 	if key == nil {
 		log.Debug().Msgf("key %s not present in the database", signatureCandidate.keyID)
