@@ -173,6 +173,10 @@ type Signature struct {
 	signatureScheme      tls.SignatureScheme
 }
 
+func (s *Signature) PublicKey() crypto.PublicKey {
+	return s.pubkey
+}
+
 // SignatureAuthorizationHeader serializes the signature into a string
 // that can be used in the Authorization header.
 // The returned value takes the form
