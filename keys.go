@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"sync"
 )
 
 var b64Encoder = base64.RawStdEncoding
@@ -48,15 +49,42 @@ func GetKeyType(scheme tls.SignatureScheme) (KeyType, error) {
 	}
 }
 
-// currently a simple wrapper around map, but that could be make
-// thread safe or so in the future
+type SyncMap[K comparable, V any] struct {
+	inner sync.Map
+}
+
+func NewSyncMap[K comparable, V any]() SyncMap[K, V] {
+	return SyncMap[K, V]{
+		inner: sync.Map{},
+	}
+}
+
+func (m *SyncMap[K, V]) Get(key K) (V, bool) {
+	val, ok := m.inner.Load(key)
+	if val == nil {
+		// we can't return nil for *any* type, so we create a zero value for the type and return it, instead of nil
+		var zero V
+		return zero, ok
+	}
+	return val.(V), ok
+}
+
+func (m *SyncMap[K, V]) Insert(key K, val V) {
+	m.inner.Store(key, val)
+}
+
+func (m *SyncMap[K, V]) Remove(key K) {
+	m.inner.Delete(key)
+}
+
+// currently a simple wrapper around a SyncMap
 type Keys struct {
-	idToKeys map[KeyID]crypto.PublicKey
+	idToKeys SyncMap[KeyID, crypto.PublicKey]
 }
 
 func NewKeysDatabase() *Keys {
 	return &Keys{
-		idToKeys: make(map[KeyID]crypto.PublicKey),
+		idToKeys: SyncMap[KeyID, crypto.PublicKey]{},
 	}
 }
 
@@ -64,20 +92,24 @@ func NewKeysDatabase() *Keys {
 // Returns nil if no previous key was present with this ID, otherwise returns
 // the previous key.
 func (k *Keys) AddKey(id KeyID, key crypto.PublicKey) crypto.PublicKey {
-	previousKey := k.idToKeys[id]
-	k.idToKeys[id] = key
+	previousKey, _ := k.idToKeys.Get(id)
+	k.idToKeys.Insert(id, key)
 	return previousKey
 }
 
 // RemoveKey removes the public key with the given Key ID from the database
 func (k *Keys) RemoveKey(id KeyID) crypto.PublicKey {
-	previousKey := k.idToKeys[id]
-	delete(k.idToKeys, id)
+	previousKey, _ := k.idToKeys.Get(id)
+	k.idToKeys.Remove(id)
 	return previousKey
 }
 
 // GetKey returns the public key with the given Key ID from the database
 // Returns nil if none was found
 func (k *Keys) GetKey(id KeyID) crypto.PublicKey {
-	return k.idToKeys[id]
+	key, ok := k.idToKeys.Get(id)
+	if !ok {
+		return nil
+	}
+	return key
 }
