@@ -8,8 +8,6 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
-
-	"github.com/rs/zerolog/log"
 )
 
 var b64Encoder = base64.RawStdEncoding

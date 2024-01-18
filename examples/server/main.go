@@ -13,6 +13,7 @@ import (
 
 	"github.com/caddyserver/certmagic"
 	http_signature_auth "github.com/francoismichel/http-signature-auth-go"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh"
@@ -71,11 +72,11 @@ func main() {
 	}
 	authorizedKeysFile, err := os.Open(*authorizedKeys)
 	if err != nil {
-		log.Fatal().Msgf("could not open authorized keys file", *authorizedKeys, ":", err)
+		log.Fatal().Msgf("could not open authorized keys file %s: %s", *authorizedKeys, err)
 	}
 	keyIDs, keys, err := ParseAuthorizedKeysFile(authorizedKeysFile)
 	if err != nil {
-		log.Fatal().Msgf("could not parse authorized keys file", *authorizedKeys, ":", err)
+		log.Fatal().Msgf("could not parse authorized keys file %s: %s", *authorizedKeys, err)
 	}
 
 	keysDB := http_signature_auth.NewKeysDatabase()
@@ -107,6 +108,8 @@ func main() {
 	}
 
 
+	tlsConfig.NextProtos = []string{"http/1.1", "h2", "h3"}
+
 	mux := http.NewServeMux()
 	handler := http_signature_auth.NewSignatureAuthHandler(keysDB, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, World!")
@@ -117,8 +120,21 @@ func main() {
 		Addr: 	*bindAddr,
 		Handler: mux,
 	}
-	err = server.ListenAndServeTLS("", "")
+	log.Info().Msgf("Start HTTPS over TLS on %s", *bindAddr)
+	go func() {
+		err = server.ListenAndServeTLS("", "")
+		if err != nil {
+			log.Fatal().Msgf("cannot listen and serve TLS: %s", err)
+		}
+	}()
+	log.Info().Msgf("Start HTTPS over QUIC on %s", *bindAddr)
+	quicServer := http3.Server{
+		TLSConfig: tlsConfig,
+		Addr: *bindAddr,
+		Handler: mux,
+	}
+	err = quicServer.ListenAndServe()
 	if err != nil {
-		log.Fatal().Msgf("cannot listen and serve TLS:", err)
+		log.Fatal().Msgf("cannot listen and serve TLS: %s", err)
 	}
 }

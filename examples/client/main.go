@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -17,9 +18,12 @@ import (
 	"syscall"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/net/http2"
 	"golang.org/x/term"
 
 	http_signature_auth "github.com/francoismichel/http-signature-auth-go"
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -38,6 +42,8 @@ func GuessSignatureScheme(signer crypto.Signer) (tls.SignatureScheme, error) {
 }
 
 func main() {
+	doHTTP1Dot1 := flag.Bool("http1.1", false, "if set, use HTTP/2 (using TCP) instead of HTTP/3 (using QUIC)")
+	doHTTP2 := flag.Bool("http2", false, "if set, use HTTP/1.1 (using TCP) instead of HTTP/3 (using QUIC)")
 	privateKeyArg := flag.String("privkey", "", "path the an OpenSSH-parsable private key file that will be used to authenticate the client")
 	insecure := flag.Bool("insecure", false, "if set, skips the TLS certificates verification")
 	signatureSchemeArg := flag.Int("signature-scheme", -1, "sets the signature scheme integer value "+
@@ -46,6 +52,12 @@ func main() {
 	verbose := flag.Bool("v", false, "verbose mode, displays sent and received HTTP headers")
 	flag.Parse()
 
+	if *doHTTP1Dot1 && *doHTTP2 {
+		flag.Usage()
+		log.Fatal().Msgf("Cannot use both -http1.1 and -http2 at the same time, either one, the other or none")
+	}
+
+	useTCP := *doHTTP1Dot1 || *doHTTP2
 
 	if *verbose {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
@@ -68,29 +80,6 @@ func main() {
 	request, err := http.NewRequest("GET", flag.Args()[0], nil)
 	if err != nil {
 		log.Fatal().Msgf("could not build request from URL: %s", err)
-	}
-
-	tlsConf := tls.Config{
-		InsecureSkipVerify: *insecure,
-	}
-	port := "443"
-	if request.URL.Port() != "" {
-		port = request.URL.Port()
-	}
-	tlsConn, err := tls.Dial("tcp", request.URL.Hostname()+":"+port, &tlsConf)
-	if err != nil {
-		log.Fatal().Msgf("could not connect to server using TLS: %s", err)
-	}
-	defer tlsConn.Close()
-
-	connState := tlsConn.ConnectionState()
-
-	client := &http.Client{
-		Transport: &http.Transport{
-			DialTLS: func(network, addr string) (net.Conn, error) {
-				return tlsConn, nil
-			},
-		},
 	}
 
 	privateKeyBytes, err := os.ReadFile(*privateKeyArg)
@@ -142,6 +131,67 @@ func main() {
 		signatureScheme = tls.SignatureScheme(*signatureSchemeArg)
 	}
 
+	var roundTripper http.RoundTripper
+	tlsConf := tls.Config{
+		InsecureSkipVerify: *insecure,
+	}
+	port := "443"
+	if request.URL.Port() != "" {
+		port = request.URL.Port()
+	}
+
+	var connState tls.ConnectionState
+	var response *http.Response
+	if useTCP {
+		// setting NextProtos to nil enables both HTTP/1.1 and H2
+		// but if we're in this if, that means the user selected either HTTP/1.1 or H2
+		if *doHTTP1Dot1 {
+			tlsConf.NextProtos = []string{"http/1.1"}
+		} else {
+			tlsConf.NextProtos = []string{"h2"}
+		}
+
+		// establish a TCP+TLS session
+		log.Debug().Msgf("Establish TCP+TLS session to %s:%s", request.URL.Hostname(), port)
+		tlsConn, err := tls.Dial("tcp", request.URL.Hostname()+":"+port, &tlsConf)
+		if err != nil {
+			log.Fatal().Msgf("could not connect to server using TLS: %s", err)
+		}
+		defer tlsConn.Close()
+
+		connState = tlsConn.ConnectionState()
+
+		transport := &http.Transport{
+			DialTLS: func(network, addr string) (net.Conn, error) {
+				return tlsConn, nil
+			},
+		}
+
+		// Weird that I need to use this, but if I don't, http2 just isn't parsed on the client
+		// and the connection breaks
+		if *doHTTP2 {
+			http2.ConfigureTransport(transport)
+		}
+		roundTripper = transport
+	} else {
+		// we must set NextProtos to "h3" to enable HTTP/3
+		tlsConf.NextProtos = []string{http3.NextProtoH3}
+		// establish a QUIC connection
+		log.Debug().Msgf("Establish QUIC connection to %s:%s", request.URL.Hostname(), port)
+		qConn, err := quic.DialAddr(context.Background(), request.URL.Hostname()+":"+port, &tlsConf, nil)
+		if err != nil {
+			log.Fatal().Msgf("could establish QUIC connection: %s", err)
+		}
+
+		connState = qConn.ConnectionState().TLS
+		
+		roundTripper = &http3.RoundTripper{
+			Dial: func(ctx context.Context, addr string, tlsConf *tls.Config, quicConf *quic.Config) (quic.EarlyConnection, error) {
+				return qConn.(quic.EarlyConnection), nil
+			},
+		}
+	}
+
 	signature, err := http_signature_auth.NewSignatureForRequest(&connState, request, http_signature_auth.KeyID(keyID[:]), signer, signatureScheme)
 	if err != nil {
 		log.Fatal().Msgf("could not generate signature for request: %s", err)
@@ -154,7 +204,6 @@ func main() {
 
 	request.Header.Set("Authorization", authHeaderValue)
 
-
 	if *verbose {
 		log.Debug().Msgf("Sending request %s %s", request.Method, request.URL.String())
 		log.Debug().Msgf("Headers:")
@@ -163,7 +212,8 @@ func main() {
 		}
 	}
 	
-	response, err := client.Do(request)
+	response, err = roundTripper.RoundTrip(request)
+	log.Debug().Msgf("negotiated protocol is %s", connState.NegotiatedProtocol)
 	if err != nil {
 		log.Fatal().Msgf("could not perform request: %s", err)
 	}
