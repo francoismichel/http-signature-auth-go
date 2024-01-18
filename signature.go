@@ -345,7 +345,7 @@ func ParseSignatureAuthorizationContent(content string) (*Signature, error) {
 		}
 		return signature, nil
 	}
-	return nil, MalformedHTTPSignatureAuth{Msg: "Signature does not start with " + prefix}
+	return nil, MalformedHTTPSignatureAuth{Msg: "Authorization header content does not start with " + prefix}
 }
 
 // ExtractSignature extracts the HTTP signature from the Authorization header
