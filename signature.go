@@ -244,6 +244,70 @@ func NewSignatureWithMaterial(material *TLSExporterMaterial, keyID KeyID, privKe
 	}, nil
 }
 
+func ParseSignatureAuthorizationPayload(payload string) (*Signature, error) {
+	const prefix = "Signature "
+	if strings.HasPrefix(payload, prefix) {
+		// Extract the parameters from the Authorization header
+		parameters := payload[len(prefix):]
+
+		parametersPresent := make(map[string]bool)
+		fields := strings.Split(parameters, ",")
+
+		signature := &Signature{}
+
+		pubkeyBase64 := ""
+		var err error
+		for _, fieldWithSpaces := range fields {
+			field := strings.TrimSpace(fieldWithSpaces)
+			
+			keyValue := strings.Split(field, "=")
+			if len(keyValue) != 2 {
+				return nil, MalformedHTTPSignatureAuth{Msg: "parameters should be in k=v format, received: " + field}
+			}
+
+			key, value := keyValue[0], keyValue[1]
+			if present := parametersPresent[key]; present {
+				// we assume that parameters cannot be repeated
+				return nil, MalformedHTTPSignatureAuth{Msg: "duplicate parameter: " + key}
+			}
+
+			switch key {
+			case "k":
+				signature.keyID, err = ParseKeyID(value)
+			case "a":
+				pubkeyBase64 = value
+			case "s":
+				signature.signatureScheme, err = ParseAndValidateSignatureScheme(value)
+			case "v":
+				signature.exporterVerification, err = b64Encoder.DecodeString(value)
+			case "p":
+				signature.proof, err = b64Encoder.DecodeString(value)
+			default:
+				return nil, MalformedHTTPSignatureAuth{Msg: "Unknown parameter: " + key}
+			}
+			if err != nil {
+				return nil, err
+			}
+			parametersPresent[key] = true
+		}
+
+		// we handle the public key separaterly as it could depend on the signature scheme
+		// that is also present in the as an authentication parameter
+		if parametersPresent["a"] && pubkeyBase64 != "" {
+			signature.pubkey, err = ParsePublicKey(pubkeyBase64, signature.signatureScheme)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		if len(parametersPresent) != 5 {
+			return nil, MalformedHTTPSignatureAuth{Msg: "Expected 5 parameters, received " + fmt.Sprint(len(parametersPresent))}
+		}
+		return signature, nil
+	}
+	return nil, MalformedHTTPSignatureAuth{Msg: "Signature does not start with " + prefix}
+}
+
 // ExtractSignature extracts the HTTP signature from the Authorization header
 // It may return a nil signature with a nil error if no signature was found.
 // It returns a non-nil error if the Signature was present in the
@@ -260,54 +324,7 @@ func NewSignatureWithMaterial(material *TLSExporterMaterial, keyID KeyID, privKe
 //	    aWNoIHRha2VzIDUxMiBiaXRzIGZvciBFZDI1NTE5IQ
 func ExtractSignature(r *http.Request) (*Signature, error) {
 	authHeader := r.Header.Get("Authorization")
-	const prefix = "Signature "
-	if strings.HasPrefix(authHeader, prefix) {
-		// Extract the parameters from the Authorization header
-		parameters := authHeader[len(prefix):]
-
-		parametersPresent := make(map[string]bool)
-		fields := strings.Split(parameters, ",")
-
-		signature := &Signature{}
-
-		for _, field := range fields {
-			keyValue := strings.Split(field, "=")
-			if len(keyValue) != 2 {
-				return nil, MalformedHTTPSignatureAuth{Msg: "parameters should be in k=v format, received: " + field}
-			}
-
-			key, value := keyValue[0], keyValue[1]
-			if present := parametersPresent[key]; present {
-				// we assume that parameters cannot be repeated
-				return nil, MalformedHTTPSignatureAuth{Msg: "duplicate parameter: " + key}
-			}
-
-			var err error
-			switch key {
-			case "k":
-				signature.keyID, err = ParseKeyID(value)
-			case "a":
-				signature.pubkey, err = ParsePublicKey(value, signature.signatureScheme)
-			case "s":
-				signature.signatureScheme, err = ParseAndValidateSignatureScheme(value)
-			case "v":
-				signature.exporterVerification, err = b64Encoder.DecodeString(value)
-			case "p":
-				signature.proof, err = b64Encoder.DecodeString(value)
-			default:
-				return nil, MalformedHTTPSignatureAuth{Msg: "Unknown parameter: " + key}
-			}
-			if err != nil {
-				return nil, err
-			}
-			parametersPresent[key] = true
-		}
-
-		if len(parametersPresent) != 5 {
-			return nil, MalformedHTTPSignatureAuth{Msg: "Expected 5 parameters, received " + fmt.Sprint(len(parametersPresent))}
-		}
-	}
-	return nil, nil
+	return ParseSignatureAuthorizationPayload(authHeader)
 }
 
 func ValidateSignature(keysDB *Keys, r *http.Request) (bool, error) {

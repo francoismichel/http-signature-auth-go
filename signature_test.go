@@ -57,3 +57,23 @@ func TestVerifySignatureWithExistingMaterial(t *testing.T) {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(ok).To(BeTrue())
 }
+
+func TestParseSignatureAuthorizationPayload(t *testing.T) {
+	RegisterTestingT(t)
+	stringVal :="Signature k=YmFzZW1lbnQ, a=VGhpcyBpcyBhIHB1YmxpYyBrZXkgaW4gdXNlIGhlcmU, "+
+	"s=2055, v=dmVyaWZpY2F0aW9uXzE2Qg, p=SW5zZXJ0IHNpZ25hdHVyZSBvZiBub25jZSBoZXJlIHdo"+
+	"aWNoIHRha2VzIDUxMiBiaXRzIGZvciBFZDI1NTE5IQ"
+
+	decodedKeyId := "basement"
+	decodedPubKey := "This is a public key in use here"
+
+	decodedVerification := "verification_16B"
+	decodedSignature := "Insert signature of nonce here which takes 512 bits for Ed25519!"
+
+	signature, err := ParseSignatureAuthorizationPayload(stringVal)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(signature.keyID).To(Equal(KeyID(decodedKeyId)))
+	Expect(signature.pubkey).To(BeEquivalentTo(decodedPubKey))
+	Expect(signature.exporterVerification).To(BeEquivalentTo(decodedVerification))
+	Expect(signature.proof).To(BeEquivalentTo(decodedSignature))
+}
