@@ -61,20 +61,24 @@ func TestParseSignatureAuthorizationPayload(t *testing.T) {
 	RegisterTestingT(t)
 
 	// these values come from the example in https://www.ietf.org/archive/id/draft-ietf-httpbis-unprompted-auth-05.html
-	stringVal := "Signature k=YmFzZW1lbnQ, a=VGhpcyBpcyBhIHB1YmxpYyBrZXkgaW4gdXNlIGhlcmU, " +
-		"s=2055, v=dmVyaWZpY2F0aW9uXzE2Qg, p=SW5zZXJ0IHNpZ25hdHVyZSBvZiBub25jZSBoZXJlIHdo" +
-		"aWNoIHRha2VzIDUxMiBiaXRzIGZvciBFZDI1NTE5IQ"
+	/*
+	*/
+	stringVal := "Signature k=YmFzZW1lbnQ, a=VGhpcyBpcyBh-HB1YmxpYyBrZXkgaW4gdXNl_GhlcmU, " +
+	    "s=2055, v=dmVyaWZpY2F0aW9u_zE2Qg, p=SW5zZXJ0_HNpZ25hdHVyZSBvZiBub25jZSBoZXJlIHdo" +
+	    "aWNoIHRha2VzIDUxMiBiaXRz-GZvciBFZDI1NTE5IQ"
 
 	decodedKeyId := "basement"
-	decodedPubKey := "This is a public key in use here"
+	decodedPubKey := "This is a\xF8public key in use\xFChere"
 
-	decodedVerification := "verification_16B"
-	decodedSignature := "Insert signature of nonce here which takes 512 bits for Ed25519!"
+	decodedVerification := "verification\xFF16B"
+	decodedSignature := "Insert\xFCsignature of nonce here which takes 512 bits\xF8for Ed25519!"
 
 	signature, err := ParseSignatureAuthorizationContent(stringVal)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(signature.keyID).To(Equal(KeyID(decodedKeyId)))
-	Expect(signature.pubkey).To(BeEquivalentTo(decodedPubKey))
+	Expect([]byte(signature.pubkey.(ed25519.PublicKey))).To(BeEquivalentTo([]uint8(decodedPubKey)))
 	Expect(signature.exporterVerification).To(BeEquivalentTo(decodedVerification))
 	Expect(signature.proof).To(BeEquivalentTo(decodedSignature))
+
+
 }
