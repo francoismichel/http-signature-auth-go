@@ -6,12 +6,9 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/tls"
-	"encoding/base64"
 	"fmt"
 	"sync"
 )
-
-var b64Encoder = base64.RawStdEncoding
 
 type KeyID string
 

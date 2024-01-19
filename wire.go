@@ -8,12 +8,15 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"math/big"
 	"strconv"
 
 	"github.com/rs/zerolog/log"
 )
+
+var b64Encoder = base64.RawURLEncoding
 
 // ParseKeyID parses the given base64-encoded string into a KeyID
 // The id parameter must be a valid base64-encoded string following
