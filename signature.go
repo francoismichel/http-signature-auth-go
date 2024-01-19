@@ -127,8 +127,6 @@ func PrepareTLSExporterInput(signatureScheme tls.SignatureScheme, keyID KeyID, p
 	out = quicvarint.Append(out, uint64(len(httpRealm)))
 	out = append(out, []byte(httpRealm)...)
 
-	// TODO: Implement the rest of the function
-
 	return out, nil
 }
 
@@ -175,6 +173,10 @@ type Signature struct {
 
 func (s *Signature) PublicKey() crypto.PublicKey {
 	return s.pubkey
+}
+
+func (s *Signature) SignatureScheme() tls.SignatureScheme {
+	return s.signatureScheme
 }
 
 // SignatureAuthorizationHeader serializes the signature into a string
