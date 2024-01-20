@@ -45,6 +45,9 @@ func main() {
 	doHTTP1Dot1 := flag.Bool("http1.1", false, "if set, use HTTP/2 (using TCP) instead of HTTP/3 (using QUIC)")
 	doHTTP2 := flag.Bool("http2", false, "if set, use HTTP/1.1 (using TCP) instead of HTTP/3 (using QUIC)")
 	privateKeyArg := flag.String("privkey", "", "path the an OpenSSH-parsable private key file that will be used to authenticate the client")
+	keyIDArg := flag.String("keyid", "", "The keyID that identifies that key to the server. The server must know this keyID as well. " + 
+										 "This argument contains the raw bytes of the key, not encoded." +
+										 "If not set, a keyID is generated as he sha256 sum sshPubKey.Marshal()")
 	insecure := flag.Bool("insecure", false, "if set, skips the TLS certificates verification")
 	signatureSchemeArg := flag.Int("signature-scheme", -1, "sets the signature scheme integer value "+
 		"see the supported schemes at https://www.ietf.org/archive/id/draft-ietf-httpbis-unprompted-auth-05.html"+
@@ -114,7 +117,11 @@ func main() {
 		log.Fatal().Msgf("could not get SSH public key from private key: %s", err)
 
 	}
-	keyID := sha256.Sum256(sshPubKey.Marshal())
+	keyID := []byte(*keyIDArg)
+	if *keyIDArg == "" {
+		sha := sha256.Sum256(sshPubKey.Marshal())
+		keyID = sha[:]
+	}
 
 	var signatureScheme tls.SignatureScheme
 	if *signatureSchemeArg == -1 {
@@ -191,7 +198,7 @@ func main() {
 		}
 	}
 
-	signature, err := http_signature_auth.NewSignatureForRequest(&connState, request, http_signature_auth.KeyID(keyID[:]), signer, signatureScheme)
+	signature, err := http_signature_auth.NewSignatureForRequest(&connState, request, http_signature_auth.KeyID(keyID), signer, signatureScheme)
 	if err != nil {
 		log.Fatal().Msgf("could not generate signature for request: %s", err)
 	}
