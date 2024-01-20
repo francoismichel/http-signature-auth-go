@@ -171,6 +171,10 @@ type Signature struct {
 	signatureScheme      tls.SignatureScheme
 }
 
+func (s *Signature) KeyID() KeyID {
+	return s.keyID
+}
+
 func (s *Signature) PublicKey() crypto.PublicKey {
 	return s.pubkey
 }
