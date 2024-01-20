@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 func ParseAuthorizedKeysFile(file *os.File) (keyIDs []http_signature_auth.KeyID, keys []crypto.PublicKey, err error) {
 	scanner := bufio.NewScanner(file)
 	lineNumber := 0
+linesLoop:
 	for scanner.Scan() {
 		lineNumber += 1
 		line := scanner.Text()
@@ -33,7 +35,18 @@ func ParseAuthorizedKeysFile(file *os.File) (keyIDs []http_signature_auth.KeyID,
 			log.Printf("%s:%d: skip commented key", file.Name(), lineNumber)
 			continue
 		}
-		sshPubkey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(line))
+		sshPubkey, comment, _, _, err := ssh.ParseAuthorizedKey([]byte(line))
+		var keyID []byte = nil
+		for _, field := range strings.Fields(comment) {
+			if strings.HasPrefix(field, "keyid=") {
+				keyID, err = base64.RawURLEncoding.DecodeString(field[len("keyid="):])
+				if err != nil {
+					log.Printf("%s:%d: skip SSH public key that has an invalid keyid: \"%s\" %s", file.Name(), lineNumber, field[len("keyid="):], err)
+					continue linesLoop
+				}
+				break
+			}
+		}
 		var pubkey crypto.PublicKey
 		if sshCpk, ok := sshPubkey.(ssh.CryptoPublicKey); ok {
 			pubkey = sshCpk.CryptoPublicKey()
@@ -42,7 +55,11 @@ func ParseAuthorizedKeysFile(file *os.File) (keyIDs []http_signature_auth.KeyID,
 			continue
 		}
 		if err == nil {
-			keyID := sha256.Sum256(sshPubkey.Marshal())
+			if keyID == nil {
+				sha := sha256.Sum256(sshPubkey.Marshal())
+				keyID = sha[:]
+			}
+			log.Debug().Msgf("add pubkey with keyID %s", base64.RawURLEncoding.EncodeToString(keyID))
 			keys = append(keys, pubkey)
 			keyIDs = append(keyIDs, http_signature_auth.KeyID(keyID[:]))
 		} else {
