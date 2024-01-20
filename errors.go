@@ -62,5 +62,5 @@ type PublicKeysMismatch struct {
 }
 
 func (e PublicKeysMismatch) Error() string {
-	return fmt.Sprintf("The proposed key with key %s ID does not match the public key in the database", e.keyID)
+	return fmt.Sprintf("The proposed key with key ID %s does not match the public key in the database", e.keyID)
 }
