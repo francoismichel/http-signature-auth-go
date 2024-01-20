@@ -139,6 +139,14 @@ type TLSExporterMaterial struct {
 	verification   [16]byte
 }
 
+func (m *TLSExporterMaterial) SignatureInput() [32]byte {
+	return m.signatureInput
+}
+
+func (m *TLSExporterMaterial) Verification() [16]byte {
+	return m.verification
+}
+
 func (m *TLSExporterMaterial) String() string {
 	return fmt.Sprintf("signatureInput=%s, verification=%s", b64Encoder.EncodeToString(m.signatureInput[:]), b64Encoder.EncodeToString(m.verification[:]))
 }
