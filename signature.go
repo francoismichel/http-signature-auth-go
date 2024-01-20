@@ -420,7 +420,9 @@ func VerifySignatureWithMaterial(keysDB *Keys, signatureCandidate *Signature, ma
 	}
 
 	if !key.(PubkeyEqual).Equal(signatureCandidate.pubkey) {
-		return false, PublicKeysMismatch{keyID: signatureCandidate.keyID}
+		// do not return error, as this is not a problem with the signature per-se
+		log.Debug().Msgf("%s", PublicKeysMismatch{keyID: signatureCandidate.keyID})
+		return false, nil
 	}
 
 	signaturePayload := append(SIGNATURE_HEADER, material.signatureInput[:]...)
