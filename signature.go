@@ -160,6 +160,9 @@ func GenerateTLSExporterMaterial(tls *tls.ConnectionState, signatureScheme tls.S
 	if err != nil {
 		return material, err
 	}
+
+	log.Debug().Msgf("exporter input: %s", b64Encoder.EncodeToString(exporterInput))
+
 	exporterOutput, err := tls.ExportKeyingMaterial("EXPORTER-HTTP-Signature-Authentication", exporterInput, 48)
 	if err != nil {
 		return material, err
@@ -212,6 +215,14 @@ func (s *Signature) SignatureAuthorizationHeader() (string, error) {
 	return out, nil
 }
 
+func getHostWithoutPort(r *http.Request) string {
+	hostPort := strings.Split(r.Host, ":")
+	if len(hostPort) > 1 {
+		return hostPort[0]
+	}
+	return r.Host
+}
+
 func NewSignatureForRequest(tls *tls.ConnectionState, r *http.Request, keyID KeyID, signer crypto.Signer, signatureScheme tls.SignatureScheme) (*Signature, error) {
 	// from the doc:
 	// For server requests, the URL is parsed from the URI
@@ -231,7 +242,7 @@ func NewSignatureForRequest(tls *tls.ConnectionState, r *http.Request, keyID Key
 		return nil, err
 	}
 	// TODO: Implement realm
-	material, err := GenerateTLSExporterMaterial(tls, signatureScheme, keyID, signer.Public(), httpScheme, r.Host, uint16(port), "")
+	material, err := GenerateTLSExporterMaterial(tls, signatureScheme, keyID, signer.Public(), httpScheme, getHostWithoutPort(r), uint16(port), "")
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +418,7 @@ func VerifySignature(keysDB *Keys, r *http.Request) (bool, error) {
 	}
 
 	material, err := GenerateTLSExporterMaterial(r.TLS, signatureCandidate.signatureScheme,
-		signatureCandidate.keyID, signatureCandidate.pubkey, httpScheme, r.Host,
+		signatureCandidate.keyID, signatureCandidate.pubkey, httpScheme, getHostWithoutPort(r),
 		uint16(port), "") // TODO: Implement realm
 	if err != nil {
 		return false, err
