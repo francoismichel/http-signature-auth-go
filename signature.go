@@ -396,7 +396,7 @@ func ExtractSignature(r *http.Request) (*Signature, error) {
 	return ParseSignatureAuthorizationContent(authHeader)
 }
 
-func VerifySignature(keysDB *Keys, r *http.Request) (bool, error) {
+func VerifySignature(keysDB KeysDB, r *http.Request) (bool, error) {
 	signatureCandidate, err := ExtractSignature(r)
 	if err != nil {
 		return false, err
@@ -426,7 +426,7 @@ func VerifySignature(keysDB *Keys, r *http.Request) (bool, error) {
 	return VerifySignatureWithMaterial(keysDB, signatureCandidate, &material)
 }
 
-func VerifySignatureWithMaterial(keysDB *Keys, signatureCandidate *Signature, material *TLSExporterMaterial) (bool, error) {
+func VerifySignatureWithMaterial(keysDB KeysDB, signatureCandidate *Signature, material *TLSExporterMaterial) (bool, error) {
 	log.Debug().Msgf("Verifying signature with key ID %s, proof=%s, exporter_material=<%s>", b64Encoder.EncodeToString([]byte(signatureCandidate.keyID)),
 		b64Encoder.EncodeToString(signatureCandidate.proof), material)
 	key := keysDB.GetKey(signatureCandidate.keyID)
