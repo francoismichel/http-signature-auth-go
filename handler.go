@@ -8,9 +8,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func NewSignatureAuthHandler(keysDB *Keys, handlerFunc http.HandlerFunc) http.HandlerFunc {
+func NewSignatureAuthHandler(keysDB KeysDB, handlerFunc http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		
+
 		log.Debug().Msgf("Received request from %s", r.RemoteAddr)
 		dump, err := httputil.DumpRequest(r, true)
 		if err != nil {

@@ -18,7 +18,7 @@ func TestVerifySignatureWithExistingMaterial(t *testing.T) {
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	Expect(err).ToNot(HaveOccurred())
 	rsaKeyID := "testKeyIDrsa"
-	keys := NewKeysDatabase()
+	keys := NewMemoryKeysDatabase()
 	keys.AddKey(KeyID(rsaKeyID), &rsaKey.PublicKey)
 
 	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -62,10 +62,10 @@ func TestParseSignatureAuthorizationPayload(t *testing.T) {
 
 	// these values come from the example in https://www.ietf.org/archive/id/draft-ietf-httpbis-unprompted-auth-05.html
 	/*
-	*/
+	 */
 	stringVal := "Signature k=YmFzZW1lbnQ, a=VGhpcyBpcyBh-HB1YmxpYyBrZXkgaW4gdXNl_GhlcmU, " +
-	    "s=2055, v=dmVyaWZpY2F0aW9u_zE2Qg, p=SW5zZXJ0_HNpZ25hdHVyZSBvZiBub25jZSBoZXJlIHdo" +
-	    "aWNoIHRha2VzIDUxMiBiaXRz-GZvciBFZDI1NTE5IQ"
+		"s=2055, v=dmVyaWZpY2F0aW9u_zE2Qg, p=SW5zZXJ0_HNpZ25hdHVyZSBvZiBub25jZSBoZXJlIHdo" +
+		"aWNoIHRha2VzIDUxMiBiaXRz-GZvciBFZDI1NTE5IQ"
 
 	decodedKeyId := "basement"
 	decodedPubKey := "This is a\xF8public key in use\xFChere"
@@ -79,6 +79,5 @@ func TestParseSignatureAuthorizationPayload(t *testing.T) {
 	Expect([]byte(signature.pubkey.(ed25519.PublicKey))).To(BeEquivalentTo([]uint8(decodedPubKey)))
 	Expect(signature.exporterVerification).To(BeEquivalentTo(decodedVerification))
 	Expect(signature.proof).To(BeEquivalentTo(decodedSignature))
-
 
 }
