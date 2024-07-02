@@ -1,12 +1,12 @@
 # http-signature-auth-go
-Implements https://www.ietf.org/archive/id/draft-ietf-httpbis-unprompted-auth-05.html
+Implements https://www.ietf.org/archive/id/draft-ietf-httpbis-unprompted-auth-07.html
 HTTP1.1, HTTP/2 and HTTP/3 servers can place their resources behind
-HTTP Signature authentication by using the HTTP handler provided by this library.
+HTTP Concealed authentication by using the HTTP handler provided by this library.
 This is currently only for interop purpose and not production use yet.
 
 # Examples
 
-## Server: Serving an HTTP URL behind Signature Authentication
+## Server: Serving an HTTP URL behind Concealed Authentication
 
 ~~~~go
 keysDB := http_signature_auth.NewKeysDatabase()
@@ -40,7 +40,7 @@ quicServer := http3.Server{
 err = quicServer.ListenAndServe()
 ~~~~
 
-## Client: Accessing a resource through HTTP/3 using Signature Auth (using quic-go)
+## Client: Accessing a resource through HTTP/3 using Concealed Auth (using quic-go)
 
 ~~~~go
 request, err := http.NewRequest("GET", "https://example.org", nil)

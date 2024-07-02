@@ -129,7 +129,7 @@ func main() {
 	handler := http_signature_auth.NewSignatureAuthHandler(keysDB, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, World!")
 	})
-	mux.Handle("/signature/draft-ietf-httpbis-unprompted-auth-05", handler)
+	mux.Handle("/concealed/draft-ietf-httpbis-unprompted-auth-07", handler)
 	server := http.Server{
 		TLSConfig: tlsConfig,
 		Addr:      *bindAddr,

@@ -17,7 +17,7 @@ type MalformedHTTPSignatureAuth struct {
 }
 
 func (e MalformedHTTPSignatureAuth) Error() string {
-	return "Malformed HTTP Signature Auth: " + e.Msg
+	return "Malformed HTTP Concealed Auth: " + e.Msg
 }
 
 type InvalidTLSSignatureSchemeFormat struct {

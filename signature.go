@@ -29,7 +29,7 @@ var SIGNATURE_HEADER_PART_1 [64]byte = [64]byte{
 	0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
 }
 
-var SIGNATURE_HEADER = append(SIGNATURE_HEADER_PART_1[:], []byte("HTTP Signature Authentication\x00")...)
+var SIGNATURE_HEADER = append(SIGNATURE_HEADER_PART_1[:], []byte("HTTP Concealed Authentication\x00")...)
 
 type PubkeyEqual interface {
 	Equal(crypto.PublicKey) bool
@@ -163,7 +163,7 @@ func GenerateTLSExporterMaterial(tls *tls.ConnectionState, signatureScheme tls.S
 
 	log.Debug().Msgf("exporter input: %s", b64Encoder.EncodeToString(exporterInput))
 
-	exporterOutput, err := tls.ExportKeyingMaterial("EXPORTER-HTTP-Signature-Authentication", exporterInput, 48)
+	exporterOutput, err := tls.ExportKeyingMaterial("EXPORTER-HTTP-Concealed-Authentication", exporterInput, 48)
 	if err != nil {
 		return material, err
 	}
@@ -206,7 +206,7 @@ func (s *Signature) SignatureAuthorizationHeader() (string, error) {
 		return "", err
 	}
 	var out string
-	out += "Signature "
+	out += "Concealed "
 	out += "k=" + b64Encoder.EncodeToString([]byte(s.keyID)) + ","
 	out += "a=" + b64Encoder.EncodeToString(pubkeyBytes) + ","
 	out += "s=" + strconv.FormatUint(uint64(s.signatureScheme), 10) + ","
@@ -311,10 +311,10 @@ func NewSignatureWithMaterial(material *TLSExporterMaterial, keyID KeyID, signer
 
 // ParseSignatureAuthorizationContent parses the given Authorization header content
 // into a Signature. content must be a value Signature Authorization header content,
-// i.e. it must start with "Signature " and follow the specification in
+// i.e. it must start with "Concealed " and follow the specification in
 // https://www.ietf.org/archive/id/draft-ietf-httpbis-unprompted-auth-05.html
 func ParseSignatureAuthorizationContent(content string) (*Signature, error) {
-	const prefix = "Signature "
+	const prefix = "Concealed "
 	if strings.HasPrefix(content, prefix) {
 		// Extract the parameters from the Authorization header
 		parameters := content[len(prefix):]
@@ -414,7 +414,7 @@ func VerifySignature(keysDB *Keys, r *http.Request) (bool, error) {
 
 	port, err := GetPortFromRequest(r, httpScheme)
 	if err != nil {
-		return false, fmt.Errorf(fmt.Sprintf("incalid port: %s", err))
+		return false, fmt.Errorf(fmt.Sprintf("invalid port: %s", err))
 	}
 
 	material, err := GenerateTLSExporterMaterial(r.TLS, signatureCandidate.signatureScheme,
