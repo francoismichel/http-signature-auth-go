@@ -95,7 +95,7 @@ func main() {
 		log.Fatal().Msgf("could not parse authorized keys file %s: %s", *authorizedKeys, err)
 	}
 
-	keysDB := http_signature_auth.NewKeysDatabase()
+	keysDB := http_signature_auth.NewMemoryKeysDatabase()
 	for i := range keys {
 		keysDB.AddKey(keyIDs[i], keys[i])
 	}

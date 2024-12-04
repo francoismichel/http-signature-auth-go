@@ -74,13 +74,19 @@ func (m *SyncMap[K, V]) Remove(key K) {
 	m.inner.Delete(key)
 }
 
+type KeysDB interface {
+	AddKey(id KeyID, key crypto.PublicKey) crypto.PublicKey
+	RemoveKey(id KeyID) crypto.PublicKey
+	GetKey(id KeyID) crypto.PublicKey
+}
+
 // currently a simple wrapper around a SyncMap
-type Keys struct {
+type MemoryKeysDB struct {
 	idToKeys SyncMap[KeyID, crypto.PublicKey]
 }
 
-func NewKeysDatabase() *Keys {
-	return &Keys{
+func NewMemoryKeysDatabase() KeysDB {
+	return &MemoryKeysDB{
 		idToKeys: SyncMap[KeyID, crypto.PublicKey]{},
 	}
 }
@@ -88,14 +94,14 @@ func NewKeysDatabase() *Keys {
 // AddKey adds a public key with the given Key ID to the database of keys.
 // Returns nil if no previous key was present with this ID, otherwise returns
 // the previous key.
-func (k *Keys) AddKey(id KeyID, key crypto.PublicKey) crypto.PublicKey {
+func (k *MemoryKeysDB) AddKey(id KeyID, key crypto.PublicKey) crypto.PublicKey {
 	previousKey, _ := k.idToKeys.Get(id)
 	k.idToKeys.Insert(id, key)
 	return previousKey
 }
 
 // RemoveKey removes the public key with the given Key ID from the database
-func (k *Keys) RemoveKey(id KeyID) crypto.PublicKey {
+func (k *MemoryKeysDB) RemoveKey(id KeyID) crypto.PublicKey {
 	previousKey, _ := k.idToKeys.Get(id)
 	k.idToKeys.Remove(id)
 	return previousKey
@@ -103,7 +109,7 @@ func (k *Keys) RemoveKey(id KeyID) crypto.PublicKey {
 
 // GetKey returns the public key with the given Key ID from the database
 // Returns nil if none was found
-func (k *Keys) GetKey(id KeyID) crypto.PublicKey {
+func (k *MemoryKeysDB) GetKey(id KeyID) crypto.PublicKey {
 	key, ok := k.idToKeys.Get(id)
 	if !ok {
 		return nil
